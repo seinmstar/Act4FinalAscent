@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
@@ -20,7 +21,14 @@ internal static class RunManagerToSaveAct4Patch
 {
 	private static void Postfix(RunManager __instance, ref SerializableRun __result)
 	{
-		ModSupport.ApplyAct4SaveMarkers(__result, __instance?.DebugOnlyGetState());
+		try
+		{
+			ModSupport.ApplyAct4SaveMarkers(__result, __instance?.DebugOnlyGetState());
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[Act4Placeholder] ApplyAct4SaveMarkers failed (save will still be written): {ex}");
+		}
 	}
 }
 
@@ -29,7 +37,14 @@ internal static class RunStateFromSerializableAct4Patch
 {
 	private static void Postfix(SerializableRun save, ref RunState __result)
 	{
-		ModSupport.RestoreAct4FlagsFromSave(save, __result);
+		try
+		{
+			ModSupport.RestoreAct4FlagsFromSave(save, __result);
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[Act4Placeholder] RestoreAct4FlagsFromSave failed (save will still load): {ex}");
+		}
 	}
 }
 

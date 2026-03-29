@@ -4,22 +4,37 @@
 // ZH: Mod专用日志工具，过滤引擎常见噪音警告，提供贯穿整个代码库使用的section/info/warn/error辅助方法。
 //=============================================================================
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Acts;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Saves.Runs;
 
 namespace Act4Placeholder;
 
 /// <summary>
-/// Writes a privacy-safe mod log to Act4Placeholder_Logs.txt in the STS2 logs directory.
+/// Writes a privacy-safe mod log to Act4_Logs.txt in the STS2 logs directory.
 ///
 /// Contains:
 ///   - Filtered STS2 startup lines (game version, FMOD, Steam init, atlas loads, mod load)
 ///   - All Act4Placeholder patch results and status
 ///   - Main-menu SaveSync / RunSlots patch status
 ///   - Real game/engine ERRORs and WARNINGs (minus known-harmless noise)
+///   - ERROR context: ~10 lines following each ERROR for stack trace / details
+///   - Active run info (character, ascension, floor, act) updated periodically
+///
+/// Log rotation: keeps the 3 most recent sessions:
+///   Act4_Logs.txt              (current)
+///   Act4_Logs_2GamesAgo.txt    (previous)
+///   Act4_Logs_3GamesAgo.txt    (oldest, deleted when a new session starts)
 ///
 /// Deliberately excludes from godot.log:
 ///   - PATH environment variable
@@ -36,11 +51,21 @@ namespace Act4Placeholder;
 /// </summary>
 internal static class Act4Logger
 {
+	private const string LogFileName = "Act4_Logs.txt";
+	private const string LogFileName2 = "Act4_Logs_2GamesAgo.txt";
+	private const string LogFileName3 = "Act4_Logs_3GamesAgo.txt";
+	// Also clean up old-named files from before the rename.
+	private const string LegacyLogFileName = "Act4Placeholder_Logs.txt";
+
 	private static string? _logPath;
+	private static string? _logDir;
 	private static readonly object _lock = new();
 	private static string? _godotLogPath;
 	private static volatile int _godotLogOffsetHi; // high 32 bits of offset
 	private static volatile int _godotLogOffsetLo; // low  32 bits of offset
+
+	// Tracks the last run-info line written so we only update when something changes.
+	private static string? _lastRunInfoLine;
 
 	private static long GodotLogOffset
 	{
@@ -131,11 +156,18 @@ internal static class Act4Logger
 		@"|Is UserFS Persistent:",
 		RegexOptions.Compiled);
 
-	// Replaces absolute filesystem paths with just the trailing file name.
+	// Replaces absolute filesystem paths like "D:/SteamLibrary/.../file.pck" with just "file.pck".
 	// Keeps res:// and user:// virtual paths intact.
 	private static readonly Regex _absPathPattern = new(
 		@"[A-Za-z]:[/\\][^""'\s\r\n]*[/\\]([^/\\""'\s\r\n]+)",
 		RegexOptions.Compiled);
+
+	// Detects lines that are ERROR or [ERROR], used by the context-capture logic.
+	private static readonly Regex _errorLinePattern = new(
+		@"\bERROR[:\]]",
+		RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+	private const int ErrorContextLines = 10;
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Public API
@@ -143,7 +175,7 @@ internal static class Act4Logger
 
 	/// <summary>
 	/// Call once at the very start of ModEntry.Init().
-	/// Writes the log file header and backfills safe lines from godot.log up to this point.
+	/// Rotates old logs, writes the log file header, and backfills safe lines from godot.log.
 	/// </summary>
 	public static void Initialize(string modVersion)
 	{
@@ -153,7 +185,11 @@ internal static class Act4Logger
 			if (!Directory.Exists(logDir))
 				Directory.CreateDirectory(logDir);
 
-			_logPath = Path.Combine(logDir, "Act4Placeholder_Logs.txt");
+			_logDir = logDir;
+			_logPath = Path.Combine(logDir, LogFileName);
+
+			// ── Log rotation: keep 3 most recent sessions ──
+			RotateLogs(logDir);
 
 			var sb = new StringBuilder();
 			sb.AppendLine("=================================================================");
@@ -162,6 +198,8 @@ internal static class Act4Logger
 			sb.AppendLine("  Share THIS file (not godot.log) when reporting issues.");
 			sb.AppendLine("  godot.log contains personal system info, this one does not.");
 			sb.AppendLine("=================================================================");
+			sb.AppendLine();
+			sb.AppendLine("  Run: (waiting for run to start...)");
 			sb.AppendLine();
 
 			// Backfill safe startup lines from the current godot.log.
@@ -174,7 +212,7 @@ internal static class Act4Logger
 				try
 				{
 					// FileShare.ReadWrite so we don't block Godot's own logger.
-				using var fs = new FileStream(godotLog, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite);
+					using var fs = new FileStream(godotLog, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite);
 					using var reader = new StreamReader(fs, Encoding.UTF8);
 					string? line;
 					while ((line = reader.ReadLine()) != null)
@@ -219,6 +257,29 @@ internal static class Act4Logger
 	/// <summary>Writes a blank line followed by a section header.</summary>
 	public static void Section(string title) => Append($"\n=== {title} ===");
 
+	/// <summary>
+	/// Updates the "Run:" line near the top of the log with current run info,
+	/// and appends a timestamped status line in the body. Called when a run is
+	/// loaded/resumed and periodically by the poller.
+	/// </summary>
+	public static void UpdateRunInfo()
+	{
+		if (_logPath == null) return;
+		try
+		{
+			string runLine = BuildRunInfoLine();
+			if (runLine == _lastRunInfoLine) return;
+			_lastRunInfoLine = runLine;
+
+			// Update the "Run:" placeholder line near the top of the file.
+			UpdateRunInfoHeader(runLine);
+
+			// Also append a timestamped entry in the log body.
+			Append($"[{Ts()}] [INFO] Run status: {runLine}");
+		}
+		catch { /* never crash on run-info update */ }
+	}
+
 	// ─────────────────────────────────────────────────────────────────────────
 	// Internal helpers
 	// ─────────────────────────────────────────────────────────────────────────
@@ -250,6 +311,22 @@ internal static class Act4Logger
 		return false;
 	}
 
+	/// <summary>Returns true if the line is safe to include, OR if it should be included
+	/// as error-context (not itself an allow-listed line, but follows an ERROR).</summary>
+	private static bool IsSafeForContext(string line)
+	{
+		if (string.IsNullOrWhiteSpace(line)) return false;
+		if (_piiPattern.IsMatch(line)) return false;
+		// Don't apply noise filter for context lines, stack traces may contain
+		// substrings that match noise patterns but are still valuable.
+		return true;
+	}
+
+	private static bool IsErrorLine(string line)
+	{
+		return _errorLinePattern.IsMatch(line);
+	}
+
 	private static string Sanitize(string line)
 	{
 		// Replace absolute OS paths (C:\...\file) with just the filename.
@@ -257,9 +334,150 @@ internal static class Act4Logger
 		return _absPathPattern.Replace(line, m => m.Groups[1].Value);
 	}
 
+	// ── Log rotation ────────────────────────────────────────────────────────
+
+	private static void RotateLogs(string logDir)
+	{
+		try
+		{
+			string current = Path.Combine(logDir, LogFileName);
+			string prev = Path.Combine(logDir, LogFileName2);
+			string oldest = Path.Combine(logDir, LogFileName3);
+			string legacy = Path.Combine(logDir, LegacyLogFileName);
+
+			// Delete oldest backup.
+			if (File.Exists(oldest))
+				File.Delete(oldest);
+
+			// Move previous → oldest.
+			if (File.Exists(prev))
+				File.Move(prev, oldest);
+
+			// Move current → previous.
+			if (File.Exists(current))
+				File.Move(current, prev);
+
+			// Clean up old-named log if it exists (one-time migration).
+			if (File.Exists(legacy))
+			{
+				try { File.Delete(legacy); } catch { }
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[Act4Placeholder] Log rotation failed: {ex.Message}");
+		}
+	}
+
+	// ── Run info header ─────────────────────────────────────────────────────
+
+	private static string BuildRunInfoLine()
+	{
+		try
+		{
+			RunManager? rm = RunManager.Instance;
+			RunState? runState = rm?.DebugOnlyGetState();
+			if (runState == null)
+				return "(no active run)";
+
+			var parts = new List<string>();
+
+			// Character name(s)
+			IReadOnlyCollection<Player> players = runState.Players;
+			if (players != null && players.Count > 0)
+			{
+				var names = new List<string>();
+				foreach (Player p in players)
+				{
+					string name = p.Character?.Title?.GetFormattedText() ?? "Unknown";
+					names.Add(name);
+				}
+				parts.Add(string.Join(" + ", names));
+			}
+
+			// Ascension
+			int asc = runState.AscensionLevel;
+			if (asc > 0)
+				parts.Add($"A{asc}");
+
+			// Act
+			int actIdx = runState.CurrentActIndex;
+			IReadOnlyList<ActModel> acts = runState.Acts;
+			if (acts != null && actIdx >= 0 && actIdx < acts.Count)
+			{
+				string actTitle = acts[actIdx].Title?.GetFormattedText() ?? $"Act {actIdx + 1}";
+				parts.Add(actTitle);
+			}
+
+			// Floor (sum of completed act floors + visited coords in current act)
+			int floor = 0;
+			try
+			{
+				SerializableRun? ser = rm?.ToSave((MegaCrit.Sts2.Core.Rooms.AbstractRoom?)null);
+				if (ser != null)
+				{
+					for (int i = 0; i < ser.CurrentActIndex && ser.Acts != null && i < ser.Acts.Count; i++)
+					{
+						ActModel? actModel = ModelDb.GetById<ActModel>(ser.Acts[i].Id);
+						if (actModel != null)
+							floor += actModel.GetNumberOfFloors(ser.Players?.Count > 1);
+					}
+					floor += ser.VisitedMapCoords?.Count ?? 0;
+					parts.Add($"Floor {floor}");
+				}
+			}
+			catch { /* floor calculation is best-effort */ }
+
+			// Brutal
+			if (ModSupport.IsBrutalAct4(runState))
+				parts.Add("Brutal");
+
+			// Player count
+			if (players != null && players.Count > 1)
+				parts.Add($"{players.Count}P co-op");
+
+			return string.Join(" | ", parts);
+		}
+		catch
+		{
+			return "(error reading run info)";
+		}
+	}
+
+	private static void UpdateRunInfoHeader(string runLine)
+	{
+		if (_logPath == null) return;
+		try
+		{
+			string content;
+			lock (_lock)
+				content = File.ReadAllText(_logPath, Encoding.UTF8);
+
+			// Find and replace the "  Run: ..." line near the top.
+			const string runPrefix = "  Run: ";
+			int idx = content.IndexOf(runPrefix, StringComparison.Ordinal);
+			if (idx < 0) return;
+
+			int lineEnd = content.IndexOf('\n', idx);
+			if (lineEnd < 0) lineEnd = content.Length;
+			// Include \r if present.
+			int replaceEnd = lineEnd;
+
+			string newLine = $"{runPrefix}{runLine}";
+			string updated = content.Substring(0, idx) + newLine + content.Substring(replaceEnd);
+
+			lock (_lock)
+				File.WriteAllText(_logPath, updated, Encoding.UTF8);
+		}
+		catch { /* never crash on header update */ }
+	}
+
+	// ── Godot.log polling with ERROR context capture ────────────────────────
+
 	/// <summary>
 	/// Reads any new lines appended to godot.log since the last poll and appends
-	/// safe/filtered ones to our mod log. Called every 3 seconds by the background poller.
+	/// safe/filtered ones to our mod log. When an ERROR line is found, the next
+	/// ~10 lines are also included (PII-filtered + sanitized) for stack trace context.
 	/// </summary>
 	private static void FlushGodotLog()
 	{
@@ -276,11 +494,32 @@ internal static class Act4Logger
 				fs.Seek(current, SeekOrigin.Begin);
 				using var reader = new StreamReader(fs, Encoding.UTF8);
 				var sb = new StringBuilder();
+				int errorContextRemaining = 0;
+
 				string? line;
 				while ((line = reader.ReadLine()) != null)
 				{
-					if (IsSafe(line))
+					bool isSafeLine = IsSafe(line);
+
+					if (isSafeLine)
+					{
 						sb.AppendLine(Sanitize(line));
+						// If this line is an ERROR, start capturing context lines.
+						if (IsErrorLine(line))
+							errorContextRemaining = ErrorContextLines;
+					}
+					else if (errorContextRemaining > 0)
+					{
+						// Not normally included, but we're in error-context mode.
+						// Still apply PII filtering.
+						if (IsSafeForContext(line))
+							sb.AppendLine("    " + Sanitize(line));
+						errorContextRemaining--;
+					}
+
+					// Reset context counter if we hit a new error while already capturing.
+					if (errorContextRemaining > 0 && isSafeLine && IsErrorLine(line))
+						errorContextRemaining = ErrorContextLines;
 				}
 				output = sb.ToString();
 			}
@@ -296,10 +535,18 @@ internal static class Act4Logger
 
 	private static async Task PollGodotLogLoopAsync()
 	{
+		int tickCount = 0;
 		while (true)
 		{
 			await Task.Delay(6000);
 			FlushGodotLog();
+
+			// Update run info every ~60 seconds (10 ticks × 6s).
+			tickCount++;
+			if (tickCount % 10 == 0)
+			{
+				UpdateRunInfo();
+			}
 		}
 	}
 }

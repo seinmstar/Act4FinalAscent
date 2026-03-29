@@ -25,7 +25,7 @@ namespace Act4Placeholder;
 [ModInitializer("Init")]
 public static class ModEntry
 {
-	public const string ModVersion = "0.1.2c";
+	public const string ModVersion = "0.1.2d";
 
 	private static readonly MegaCrit.Sts2.Core.Logging.Logger Logger =
 		new MegaCrit.Sts2.Core.Logging.Logger("Act4Placeholder", (LogType)0);
@@ -323,6 +323,7 @@ public static class ModEntry
 		if (TryPatch(harmony, typeof(EventModelSetEventStatePatch), "Architect - EventModel.SetEventState")) success++; else fail++;
 		if (TryPatch(harmony, typeof(TheArchitectIsSharedPatch), "Architect - EventModel.get_IsShared")) success++; else fail++;
 		if (TryPatch(harmony, typeof(EventSynchronizerArchitectChoicePatch), "Architect - EventSynchronizer.ChooseSharedEventOption")) success++; else fail++;
+		if (TryPatch(harmony, typeof(EventSynchronizerArchitectChoiceResolutionPatch), "Architect - EventSynchronizer.ChooseOptionForSharedEvent")) success++; else fail++;
 		if (TryPatch(harmony, typeof(EventSynchronizerArchitectHostVotePatch), "Architect - EventSynchronizer.PlayerVotedForSharedOptionIndex")) success++; else fail++;
 		if (TryPatch(harmony, typeof(NEventRoomAct4HostChoicePatch), "Architect - NEventRoom host-only Act 4 choice UI")) success++; else fail++;
 		if (TryPatch(harmony, typeof(EventSynchronizerGrandLibraryChoicePatch), "GrandLibrary - EventSynchronizer shared vote (host-resolve)")) success++; else fail++;

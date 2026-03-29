@@ -612,6 +612,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 			{
 				LogArchitect($"SwapArchitectSkeletonData:anim-read-failed path={skeletonDataPath} error={ex.Message}");
 			}
+
 			Resource resource = ResourceLoader.Load(skeletonDataPath, string.Empty, ResourceLoader.CacheMode.Ignore);
 			if (resource == null)
 			{
@@ -647,7 +648,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		}
 		catch (Exception ex)
 		{
-			LogArchitect($"SwapArchitectSkeletonData:apply-failed path={skeletonDataPath} error={ex.GetType().Name}: {ex.Message}");
+			LogArchitect($"SwapArchitectSkeletonData:apply-failed path={skeletonDataPath} error={ex.Message}");
 		}
 	}
 
@@ -678,6 +679,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 					method.Invoke(this, new object[] { visuals });
 					return;
 				}
+
 				if (parameters.Length == 2 &&
 					parameters[0].ParameterType.IsInstanceOfType(spineController) &&
 					parameters[1].ParameterType.IsInstanceOfType(skeleton))
@@ -686,6 +688,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 					return;
 				}
 			}
+
 			LogArchitect("TrySetupSkinsCompat:no-compatible-overload");
 		}
 		catch (Exception ex)
@@ -1521,8 +1524,8 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		}
 	}
 
-	/// EN: Arm the phase 3 judgment check for the next enemy turn.
-	/// ZH: 启动三阶段下个敌方回合要结算的审判机制。
+	/// EN: Arm the phase 3 judgment check for the next enemy turn. Starts at 20 stacks (= 20% HP threshold).
+	/// ZH: 启动三阶段审判，起始20层代表20% HP触发阈值。
 	private async Task ArmPhaseThreeJudgmentAsync()
 	{
 		if (PhaseNumber != 3 || IsAwaitingPhaseTransition || ((MonsterModel)this).Creature.IsDead)
@@ -1533,13 +1536,13 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		_phaseThreeJudgmentTriggered = false;
 		_phaseThreeJudgmentTriggeredAttackers.Clear();
 		_currentPlayerRoundDamageTaken = 0;
-		await PowerCmd.SetAmount<ArchitectJudgmentPower>(((MonsterModel)this).Creature, 1m, ((MonsterModel)this).Creature, (CardModel)null);
+		await PowerCmd.SetAmount<ArchitectJudgmentPower>(((MonsterModel)this).Creature, 20m, ((MonsterModel)this).Creature, (CardModel)null);
 		EnsurePhaseThreeJudgmentAuraVfx();
 		ShowArchitectSpeech("Judgment.", VfxColor.Black, 2.8);
 	}
 
-	/// EN: Resolve phase 3 judgment and self-stun if players triggered it.
-	/// ZH: 结算三阶段审判；若被触发则自伤并自眩晕。
+	/// EN: Resolve phase 3 judgment. If total damage this turn exceeded 20% of Max HP, cleanse all player buffs.
+	/// ZH: 结算三阶段审判。若本回合伤害超过最大HP的20%，则清除所有玩家的增益。
 	private async Task ResolvePhaseThreeJudgmentAsync()
 	{
 		if (PhaseNumber != 3 || IsPhaseFour || IsAwaitingPhaseTransition || ((MonsterModel)this).Creature.IsDead || ((MonsterModel)this).Creature.CombatState?.CurrentSide != CombatSide.Enemy)
@@ -1552,32 +1555,27 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 			RemovePhaseThreeJudgmentAuraVfx();
 			return;
 		}
-		bool wasAttackedByCard = _phaseThreeJudgmentWasAttackedByCard || _phaseThreeJudgmentTriggered;
+		bool triggered = _phaseThreeJudgmentTriggered;
 		_phaseThreeJudgmentWasAttackedByCard = false;
 		_phaseThreeJudgmentTriggered = false;
+		_phaseThreeJudgmentTriggeredAttackers.Clear();
 		if (judgmentPower != null)
 		{
 			await PowerCmd.Remove<ArchitectJudgmentPower>(((MonsterModel)this).Creature);
 		}
 		RemovePhaseThreeJudgmentAuraVfx();
-		if (!wasAttackedByCard)
+		if (!triggered)
 		{
 			return;
 		}
-		int selfDamage = Math.Max(1, (int)Math.Ceiling((decimal)((MonsterModel)this).Creature.MaxHp * 0.1m));
-		if (IsAwaitingPhaseTransition || ((MonsterModel)this).Creature.IsDead)
+		IReadOnlyList<Player> players = ((MonsterModel)this).Creature.CombatState?.Players;
+		if (players != null)
 		{
-			return;
+			foreach (Player player in players)
+				await CleansePlayerBuffsAsync(player);
 		}
-		await CreatureCmd.SetCurrentHp(((MonsterModel)this).Creature, Math.Max(1m, ((MonsterModel)this).Creature.CurrentHp - selfDamage));
-		if (IsAwaitingPhaseTransition || ((MonsterModel)this).Creature.IsDead)
-		{
-			return;
-		}
-		await PowerCmd.SetAmount<ArchitectStunnedPower>(((MonsterModel)this).Creature, 1m, ((MonsterModel)this).Creature, (CardModel)null);
-		await CreatureCmd.Stun(((MonsterModel)this).Creature, PhaseThreeStunnedMove, "PHASE_THREE_RANDOM");
 		ShowArchitectSpeech("Judgment falls.", VfxColor.Black, 2.8);
-		LogArchitect($"Judgment:resolved damageTaken={_currentPlayerRoundDamageTaken} selfDamage={selfDamage}");
+		LogArchitect($"Judgment:resolved triggered damageTaken={_currentPlayerRoundDamageTaken}");
 	}
 
 	private async Task CleansePlayerBuffsAsync(Player player)
@@ -1598,18 +1596,14 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 	{
 		if (((MonsterModel)this).Creature.CombatState?.CurrentSide != CombatSide.Player || PhaseNumber != 2)
 		{
-			bool wasPlayerAttackHit = dealer?.Player != null && props.HasFlag(ValueProp.Move) && !props.HasFlag(ValueProp.Unpowered) && (result.UnblockedDamage > 0 || result.BlockedDamage > 0) && (result.UnblockedDamage + result.BlockedDamage) >= (decimal)((MonsterModel)this).Creature.MaxHp * 0.05m;
-			if (((MonsterModel)this).Creature.CombatState?.CurrentSide == CombatSide.Player && PhaseNumber == 3 && ((MonsterModel)this).Creature.GetPower<ArchitectJudgmentPower>() != null && wasPlayerAttackHit)
+			// Phase 3 Judgment: trigger when cumulative damage this player turn exceeds 20% of Max HP.
+			if (((MonsterModel)this).Creature.CombatState?.CurrentSide == CombatSide.Player && PhaseNumber == 3 && ((MonsterModel)this).Creature.GetPower<ArchitectJudgmentPower>() != null)
 			{
-				_phaseThreeJudgmentWasAttackedByCard = true;
-				if (dealer?.Player != null && _phaseThreeJudgmentTriggeredAttackers.Add(dealer.Player.NetId))
-				{
-					await CleansePlayerBuffsAsync(dealer.Player);
-				}
-				if (!_phaseThreeJudgmentTriggered)
-				{
+				int damagePct = (int)Math.Ceiling((double)(_currentPlayerRoundDamageTaken * 100m / Math.Max(1m, (decimal)((MonsterModel)this).Creature.MaxHp)));
+				if (!_phaseThreeJudgmentTriggered && damagePct > 20)
 					_phaseThreeJudgmentTriggered = true;
-				}
+				int remaining = Math.Max(1, 20 - damagePct);
+				await PowerCmd.SetAmount<ArchitectJudgmentPower>(((MonsterModel)this).Creature, (decimal)remaining, ((MonsterModel)this).Creature, (CardModel)null);
 			}
 			return;
 		}

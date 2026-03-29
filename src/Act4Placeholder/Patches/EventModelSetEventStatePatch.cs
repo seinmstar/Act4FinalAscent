@@ -105,9 +105,12 @@ internal static class EventModelSetEventStatePatch
 
 			if (!isLocked && !flag2 && (isProceed || isTextKeyProceed || flag))
 			{
+				int normalOptionIndex = val.Count;
+				int brutalOptionIndex = val.Count + 1;
 				val.Add(new EventOption(architect, (Func<Task>)(() => ProceedToAct4PlaceholderAsync(architect, brutal: false)), NormalAct4OptionTitle, NormalAct4OptionDescription, "ACT4_PLACEHOLDER.ACT4_OPTION.NORMAL", Array.Empty<IHoverTip>()));
 				val.Add(new EventOption(architect, (Func<Task>)(() => ProceedToAct4PlaceholderAsync(architect, brutal: true)), BrutalAct4OptionTitle, BrutalAct4OptionDescription, "ACT4_PLACEHOLDER.ACT4_OPTION.BRUTAL", Array.Empty<IHoverTip>()));
 				eventOptions = val;
+				ModSupport.RecordArchitectDifficultyChoiceOptions(normalOptionIndex, brutalOptionIndex);
 				Log.Info($"[Act4Placeholder]   SUCCESS: Injected Act 4 Normal + Brutal options.", 2);
 			}
 			else

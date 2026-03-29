@@ -195,6 +195,12 @@ internal static class ModSupport
 
 	private static readonly HashSet<RunState> BrutalAct4Runs = new HashSet<RunState>();
 
+	private static bool _architectDifficultyChoiceActive;
+
+	private static uint _architectDifficultyNormalIndex;
+
+	private static uint _architectDifficultyBrutalIndex;
+
 	private const string Act3SnapshotPath = "act4placeholder/act3_run_snapshots.json";
 
 	private const string Act4BossVictoryPath = "act4placeholder/act4_boss_victories.json";
@@ -275,6 +281,7 @@ internal static class ModSupport
 	//     并被RestoreAct4FlagsFromSave消费一次，用于确保残暴模式标志和最弱增益赠予与主机一致。
 	private static bool? _pendingJoinBrutalOverride;
 	private static List<ulong>? _pendingJoinWeakestBuffIds;
+	private static int? _pendingJoinBookChoiceBitmask;
 	private static long _pendingJoinSyncRunStartTime;
 
 	private static int _act4WeakestBuffProfileId = -1;
@@ -299,8 +306,6 @@ internal static class ModSupport
 	// ZH: 所有可调整的第四幕平衡常量已移至 Act4Config.cs。
 
 	internal static bool AdminButtonUiEnabled => false;
-
-	internal static bool HelpWeakenEnemiesEnabled => false;
 
 	internal static void EnsureAct4DynamicTextLocalizationReady()
 	{
@@ -763,11 +768,17 @@ internal static class ModSupport
 		// ZH: 若此客户端通过ClientLoadJoinResponseMessage收到来自主机的残暴/最弱增益同步，
 		//     则使用该同步数据而非读取本地磁盘文件（客户端不拥有这些文件）。
 		bool isBrutal;
+		string restoreSource;
+		int weakestSyncCount = 0;
+		int? pendingBookChoiceBitmask = null;
 		if (_pendingJoinBrutalOverride.HasValue && _pendingJoinSyncRunStartTime == run.StartTime)
 		{
 			isBrutal = _pendingJoinBrutalOverride.Value;
+			restoreSource = "join-sync";
+			pendingBookChoiceBitmask = _pendingJoinBookChoiceBitmask;
 			if (_pendingJoinWeakestBuffIds != null)
 			{
+				weakestSyncCount = _pendingJoinWeakestBuffIds.Count;
 				EnsureWeakestBuffGrantsLoaded();
 				string runKey = BuildAct3SnapshotKey(run.StartTime, run.SerializableRng?.Seed ?? string.Empty, run.Ascension, run.Players?.Count ?? 0);
 				if (!string.IsNullOrWhiteSpace(runKey))
@@ -781,16 +792,40 @@ internal static class ModSupport
 			}
 			_pendingJoinBrutalOverride = null;
 			_pendingJoinWeakestBuffIds = null;
+			_pendingJoinBookChoiceBitmask = null;
 			_pendingJoinSyncRunStartTime = 0;
 		}
 		else
 		{
 			isBrutal = IsTrackedBrutalAct4Run(run);
+			restoreSource = "local-store";
 		}
 		SetAct4Brutal(runState, isBrutal);
-		RestoreBookChoicesFromSave(run);
+		string bookChoiceSource;
+		int bookChoiceBitmask;
+		if (pendingBookChoiceBitmask.HasValue)
+		{
+			bookChoiceSource = "join-sync";
+			bookChoiceBitmask = pendingBookChoiceBitmask.Value;
+			ApplyBookChoiceBitmask(bookChoiceBitmask);
+			EnsureAct4BookChoicesLoaded();
+			string runKey = BuildAct3SnapshotKey(run.StartTime, run.SerializableRng?.Seed ?? string.Empty, run.Ascension, run.Players?.Count ?? 0);
+			if (!string.IsNullOrWhiteSpace(runKey))
+			{
+				UpsertBookChoice(runKey, bookChoiceBitmask, trimToLimit: false);
+			}
+		}
+		else
+		{
+			bookChoiceSource = "local-store";
+			RestoreBookChoicesFromSave(run);
+			bookChoiceBitmask = GetBookChoiceBitmaskForRun(run);
+		}
+		Logger.Info($"RestoreAct4FlagsFromSave: startTime={run.StartTime} source={restoreSource} brutal={isBrutal} weakestCount={weakestSyncCount} bookSource={bookChoiceSource} bookBitmask={bookChoiceBitmask}", 1);
 		EnsureRunDamageContributionsLoaded();
 		EnsureWeakestBuffGrantsLoaded();
+		// Update the mod log header with current run info now that flags are restored.
+		Act4Logger.UpdateRunInfo();
 	}
 
 	/// <summary>
@@ -799,11 +834,13 @@ internal static class ModSupport
 	/// ZH: 当客户端在ClientLoadJoinResponseMessage中收到主机附加的Act4状态字节时，
 	///     由ClientLoadJoinSyncPatch（Deserialize Postfix）调用。
 	/// </summary>
-	internal static void SetPendingJoinSyncState(long runStartTime, bool isBrutal, List<ulong> weakestBuffPlayerIds)
+	internal static void SetPendingJoinSyncState(long runStartTime, bool isBrutal, List<ulong> weakestBuffPlayerIds, int? bookChoiceBitmask = null)
 	{
 		_pendingJoinBrutalOverride = isBrutal;
 		_pendingJoinWeakestBuffIds = weakestBuffPlayerIds;
+		_pendingJoinBookChoiceBitmask = bookChoiceBitmask;
 		_pendingJoinSyncRunStartTime = runStartTime;
+		Logger.Info($"SetPendingJoinSyncState: startTime={runStartTime} brutal={isBrutal} weakestCount={weakestBuffPlayerIds?.Count ?? 0} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")}", 1);
 	}
 
 	/// <summary>
@@ -815,6 +852,24 @@ internal static class ModSupport
 	{
 		try { return IsTrackedBrutalAct4Run(run); }
 		catch { return false; }
+	}
+
+	internal static int GetBookChoiceBitmaskForRun(SerializableRun run)
+	{
+		try
+		{
+			EnsureAct4BookChoicesLoaded();
+			string key = BuildAct3SnapshotKey(run.StartTime, run.SerializableRng?.Seed ?? string.Empty, run.Ascension, run.Players?.Count ?? 0);
+			if (string.IsNullOrWhiteSpace(key))
+			{
+				return 0;
+			}
+			return BookChoicesByRunKey.TryGetValue(key, out int bitmask) ? bitmask : 0;
+		}
+		catch
+		{
+			return 0;
+		}
 	}
 
 	/// <summary>
@@ -2723,6 +2778,36 @@ internal static class ModSupport
 	internal static bool IsBrutalAct4(RunState? runState)
 	{
 		return runState != null && BrutalAct4Runs.Contains(runState);
+	}
+
+	internal static void RecordArchitectDifficultyChoiceOptions(int normalIndex, int brutalIndex)
+	{
+		if (normalIndex < 0 || brutalIndex < 0)
+		{
+			return;
+		}
+		_architectDifficultyChoiceActive = true;
+		_architectDifficultyNormalIndex = (uint)normalIndex;
+		_architectDifficultyBrutalIndex = (uint)brutalIndex;
+		Logger.Info($"RecordArchitectDifficultyChoiceOptions: normalIndex={normalIndex} brutalIndex={brutalIndex}", 1);
+	}
+
+	internal static bool TryApplyArchitectDifficultyChoice(RunState? runState, uint optionIndex, string source)
+	{
+		if (!_architectDifficultyChoiceActive || runState == null || runState.CurrentActIndex != 2 || ((IReadOnlyCollection<ActModel>)runState.Acts).Count > 3)
+		{
+			return false;
+		}
+		if (optionIndex != _architectDifficultyNormalIndex && optionIndex != _architectDifficultyBrutalIndex)
+		{
+			return false;
+		}
+
+		bool brutal = optionIndex == _architectDifficultyBrutalIndex;
+		SetAct4Brutal(runState, brutal);
+		_architectDifficultyChoiceActive = false;
+		Logger.Info($"TryApplyArchitectDifficultyChoice: source={source} optionIndex={optionIndex} brutal={brutal}", 1);
+		return true;
 	}
 
 	internal static void SetAct4Brutal(RunState? runState, bool brutal)

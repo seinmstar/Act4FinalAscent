@@ -1,13 +1,14 @@
 //=============================================================================
 // ClientLoadJoinSyncPatch.cs | Act4Placeholder - Slay the Spire 2 Mod
-// EN: Appends brutal-mode flag and weakest-buff player IDs to ClientLoadJoinResponseMessage
+// EN: Appends brutal-mode flag, weakest-buff player IDs, and book-choice bitmask to ClientLoadJoinResponseMessage
 //     so that reconnecting clients receive the host's authoritative Act 4 state and don't
-//     diverge on IsBrutalAct4 / HasAct4WeakestBuff checks that read host-only local files.
-// ZH: 将残暴模式标志和最弱增益玩家ID附加到ClientLoadJoinResponseMessage，
+//     diverge on IsBrutalAct4 / HasAct4WeakestBuff / stolen-tome checks that read host-only local files.
+// ZH: 将残暴模式标志、最弱增益玩家ID、以及偷书选择位掩码附加到ClientLoadJoinResponseMessage，
 //     使重连客户端能接收主机权威的第四幕状态，避免在读取仅主机拥有的本地文件时产生分歧。
 //=============================================================================
 using System.Collections.Generic;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 
@@ -15,7 +16,7 @@ namespace Act4Placeholder;
 
 /// <summary>
 /// EN: HOST side - after the normal payload has been written, append a version-tagged Act4 block:
-///     [ushort 0xA4C4] [bool isBrutal] [int(8) count] [ulong id] * count
+///     [ushort 0xA4C4] [bool isBrutal] [int(8) count] [ulong id] * count [int(8) bookBitmask]
 /// ZH: 主机侧——在正常负载写入完毕后，附加一个带版本标记的Act4数据块。
 /// </summary>
 [HarmonyPatch(typeof(ClientLoadJoinResponseMessage), nameof(ClientLoadJoinResponseMessage.Serialize))]
@@ -27,6 +28,7 @@ internal static class ClientLoadJoinResponseMessageSerializePatch
 		{
 			bool isBrutal = ModSupport.GetBrutalFlagForRun(__instance.serializableRun);
 			List<ulong> ids = ModSupport.GetWeakestBuffPlayerIdsForRun(__instance.serializableRun);
+			int bookChoiceBitmask = ModSupport.GetBookChoiceBitmaskForRun(__instance.serializableRun);
 			// Magic sentinel lets the client skip this block if the host is on an older mod version.
 			writer.WriteUShort(0xA4C4);
 			writer.WriteBool(isBrutal);
@@ -35,9 +37,12 @@ internal static class ClientLoadJoinResponseMessageSerializePatch
 			{
 				writer.WriteULong(id);
 			}
+			writer.WriteInt(bookChoiceBitmask & 0xFF, 8);
+			Log.Info($"[Act4Placeholder][JoinSync] Serialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={bookChoiceBitmask}", 1);
 		}
-		catch
+		catch (System.Exception ex)
 		{
+			Log.Warn($"[Act4Placeholder][JoinSync] Failed to serialize Act4 join state: {ex.Message}", 1);
 			// Never crash the join handshake. Clients will fall back to local-file reads.
 		}
 	}
@@ -74,10 +79,18 @@ internal static class ClientLoadJoinResponseMessageDeserializePatch
 			{
 				ids.Add(reader.ReadULong());
 			}
-			ModSupport.SetPendingJoinSyncState(__instance.serializableRun.StartTime, isBrutal, ids);
+			int? bookChoiceBitmask = null;
+			bitsRemaining = reader.Buffer.Length * 8 - reader.BitPosition;
+			if (bitsRemaining >= 8)
+			{
+				bookChoiceBitmask = reader.ReadInt(8);
+			}
+			ModSupport.SetPendingJoinSyncState(__instance.serializableRun.StartTime, isBrutal, ids, bookChoiceBitmask);
+			Log.Info($"[Act4Placeholder][JoinSync] Deserialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")}", 1);
 		}
-		catch
+		catch (System.Exception ex)
 		{
+			Log.Warn($"[Act4Placeholder][JoinSync] Failed to deserialize Act4 join state: {ex.Message}", 1);
 			// Gracefully degrade if the host is running an older mod version without this block.
 		}
 	}

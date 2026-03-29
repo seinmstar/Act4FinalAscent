@@ -49,10 +49,6 @@ internal static class HookModifyDamagePatch
 				__result = Math.Max(0m, __result - 6m);
 			}
 		}
-		if (ModSupport.HelpWeakenEnemiesEnabled)
-		{
-			__result = Math.Max(0m, __result - 1m);
-		}
 		// Keep linked-shadow multi-hit intents meaningful after all flat reductions.
 		// Phase 4 linked shadows should never display/resolve as 0-damage pings.
 		if (dealer.Monster is Phase4LinkedShadow)

@@ -81,3 +81,24 @@ internal static class EventSynchronizerArchitectChoicePatch
 		return false;
 	}
 }
+
+[HarmonyPatch(typeof(EventSynchronizer), "ChooseOptionForSharedEvent")]
+internal static class EventSynchronizerArchitectChoiceResolutionPatch
+{
+	private static void Prefix(EventSynchronizer __instance, uint optionIndex)
+	{
+		EventModel canonicalEvent = Traverse.Create((object)__instance).Field<EventModel>("_canonicalEvent").Value;
+		if (canonicalEvent is not TheArchitect)
+		{
+			return;
+		}
+
+		RunState runState = RunManager.Instance?.DebugOnlyGetState();
+		if (runState == null)
+		{
+			return;
+		}
+
+		ModSupport.TryApplyArchitectDifficultyChoice(runState, optionIndex, "shared-choice");
+	}
+}
