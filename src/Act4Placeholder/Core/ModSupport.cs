@@ -268,6 +268,11 @@ internal static class ModSupport
 
 	private static bool _runDamageContributionsDirty;
 
+	// EN: Track the last act index at which we persisted damage contributions.
+	//     We only write to disk at act boss transitions (end of act 1/2/3), not every auto-save.
+	// ZH: 记录上次持久化伤害贡献时的幕索引，仅在幕Boss战结束时写入磁盘，而非每次自动存档。
+	private static int _lastDamageContributionPersistActIndex = -1;
+
 	// Weakest buff: set of "{runKey}|{netId}" strings for players who earned Str/Dex for the Architect fight
 	private static readonly HashSet<string> Act4WeakestBuffGrantedKeys = new HashSet<string>();
 
@@ -283,6 +288,9 @@ internal static class ModSupport
 	private static List<ulong>? _pendingJoinWeakestBuffIds;
 	private static int? _pendingJoinBookChoiceBitmask;
 	private static long _pendingJoinSyncRunStartTime;
+	// EN: Per-player cumulative damage totals received from the host via join-sync. Keyed by NetId.
+	// ZH: 通过加入同步从主机接收的各玩家累计伤害总量，以NetId为键。
+	private static Dictionary<ulong, long>? _pendingJoinDamageContributions;
 
 	private static int _act4WeakestBuffProfileId = -1;
 
@@ -753,7 +761,15 @@ internal static class ModSupport
 		}
 		TrackBrutalAct4Run(run, IsBrutalAct4(runState));
 		TrackBookChoices(run);
-		TrackRunDamageContributions(run);
+		// EN: Only persist damage contributions when the act index changes (boss kill transitions).
+		//     This avoids excessive disk writes on every auto-save while ensuring data survives act transitions.
+		// ZH: 仅在幕索引变化时（Boss战转换）持久化伤害贡献，避免每次自动存档都写入磁盘。
+		int currentActIndex = runState?.CurrentActIndex ?? run.CurrentActIndex;
+		if (currentActIndex != _lastDamageContributionPersistActIndex)
+		{
+			TrackRunDamageContributions(run);
+			_lastDamageContributionPersistActIndex = currentActIndex;
+		}
 		PersistWeakestBuffGrantsIfDirty();
 	}
 
@@ -770,6 +786,7 @@ internal static class ModSupport
 		bool isBrutal;
 		string restoreSource;
 		int weakestSyncCount = 0;
+		int damageSyncCount = 0;
 		int? pendingBookChoiceBitmask = null;
 		if (_pendingJoinBrutalOverride.HasValue && _pendingJoinSyncRunStartTime == run.StartTime)
 		{
@@ -790,10 +807,33 @@ internal static class ModSupport
 					}
 				}
 			}
+			// EN: If the host sent damage contribution totals, merge them into local tracking.
+			//     This seeds the client's damage data so IsOwnerWeakestRunDamageContributor works
+			//     correctly after a save&quit rejoin (otherwise damage starts from zero).
+			// ZH: 若主机发送了伤害贡献总量，将其合并到本地追踪中，使客户端重连后
+			//     IsOwnerWeakestRunDamageContributor能正确工作（否则伤害从零开始）。
+			if (_pendingJoinDamageContributions != null && _pendingJoinDamageContributions.Count > 0)
+			{
+				EnsureRunDamageContributionsLoaded();
+				string dmgRunKey = BuildAct3SnapshotKey(run.StartTime, run.SerializableRng?.Seed ?? string.Empty, run.Ascension, run.Players?.Count ?? 0);
+				if (!string.IsNullOrWhiteSpace(dmgRunKey))
+				{
+					lock (RunDamageContributionLock)
+					{
+						// EN: Replace (not merge) the client's damage data with host's authoritative snapshot.
+						// ZH: 用主机权威快照替换（而非合并）客户端的伤害数据。
+						RunDamageContributionByRunKey[dmgRunKey] = new Dictionary<ulong, long>(_pendingJoinDamageContributions);
+						if (!RunDamageContributionRunKeyOrder.Contains(dmgRunKey))
+							RunDamageContributionRunKeyOrder.Add(dmgRunKey);
+						damageSyncCount = _pendingJoinDamageContributions.Count;
+					}
+				}
+			}
 			_pendingJoinBrutalOverride = null;
 			_pendingJoinWeakestBuffIds = null;
 			_pendingJoinBookChoiceBitmask = null;
 			_pendingJoinSyncRunStartTime = 0;
+			_pendingJoinDamageContributions = null;
 		}
 		else
 		{
@@ -821,7 +861,7 @@ internal static class ModSupport
 			RestoreBookChoicesFromSave(run);
 			bookChoiceBitmask = GetBookChoiceBitmaskForRun(run);
 		}
-		Logger.Info($"RestoreAct4FlagsFromSave: startTime={run.StartTime} source={restoreSource} brutal={isBrutal} weakestCount={weakestSyncCount} bookSource={bookChoiceSource} bookBitmask={bookChoiceBitmask}", 1);
+		Logger.Info($"RestoreAct4FlagsFromSave: startTime={run.StartTime} source={restoreSource} brutal={isBrutal} weakestCount={weakestSyncCount} damagePlayers={damageSyncCount} bookSource={bookChoiceSource} bookBitmask={bookChoiceBitmask}", 1);
 		EnsureRunDamageContributionsLoaded();
 		EnsureWeakestBuffGrantsLoaded();
 		// Update the mod log header with current run info now that flags are restored.
@@ -834,13 +874,17 @@ internal static class ModSupport
 	/// ZH: 当客户端在ClientLoadJoinResponseMessage中收到主机附加的Act4状态字节时，
 	///     由ClientLoadJoinSyncPatch（Deserialize Postfix）调用。
 	/// </summary>
-	internal static void SetPendingJoinSyncState(long runStartTime, bool isBrutal, List<ulong> weakestBuffPlayerIds, int? bookChoiceBitmask = null)
+	internal static void SetPendingJoinSyncState(long runStartTime, bool isBrutal, List<ulong> weakestBuffPlayerIds, int? bookChoiceBitmask = null, Dictionary<ulong, long>? damageContributions = null)
 	{
 		_pendingJoinBrutalOverride = isBrutal;
 		_pendingJoinWeakestBuffIds = weakestBuffPlayerIds;
 		_pendingJoinBookChoiceBitmask = bookChoiceBitmask;
 		_pendingJoinSyncRunStartTime = runStartTime;
-		Logger.Info($"SetPendingJoinSyncState: startTime={runStartTime} brutal={isBrutal} weakestCount={weakestBuffPlayerIds?.Count ?? 0} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")}", 1);
+		// EN: Store host-authoritative damage contributions so the client can seed its local tracking
+		//     on rejoin instead of starting from zero.
+		// ZH: 存储主机权威伤害贡献数据，使客户端在重连时可以直接使用而非从零开始。
+		_pendingJoinDamageContributions = damageContributions;
+		Logger.Info($"SetPendingJoinSyncState: startTime={runStartTime} brutal={isBrutal} weakestCount={weakestBuffPlayerIds?.Count ?? 0} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")} damagePlayerCount={damageContributions?.Count ?? 0}", 1);
 	}
 
 	/// <summary>
@@ -897,6 +941,30 @@ internal static class ModSupport
 			}
 		}
 		catch { return new List<ulong>(); }
+	}
+
+	/// <summary>
+	/// EN: Returns a snapshot of per-player damage contributions for the given run.
+	///     Used by Serialize Postfix to embed damage totals for clients during join-sync.
+	/// ZH: 返回指定运行中每位玩家的伤害贡献快照。供Serialize Postfix在加入同步时嵌入给客户端。
+	/// </summary>
+	internal static Dictionary<ulong, long> GetDamageContributionsForRun(SerializableRun run)
+	{
+		try
+		{
+			EnsureRunDamageContributionsLoaded();
+			string key = BuildAct3SnapshotKey(run.StartTime, run.SerializableRng?.Seed ?? string.Empty, run.Ascension, run.Players?.Count ?? 0);
+			if (string.IsNullOrWhiteSpace(key)) return new Dictionary<ulong, long>();
+			lock (RunDamageContributionLock)
+			{
+				if (RunDamageContributionByRunKey.TryGetValue(key, out Dictionary<ulong, long>? contributions) && contributions != null)
+				{
+					return new Dictionary<ulong, long>(contributions);
+				}
+			}
+			return new Dictionary<ulong, long>();
+		}
+		catch { return new Dictionary<ulong, long>(); }
 	}
 
 	internal static void SaveAct3SnapshotFromRunState(RunState? runState)
@@ -1768,17 +1836,14 @@ internal static class ModSupport
 			}
 			lock (RunDamageContributionLock)
 			{
-				if (!RunDamageContributionByRunKey.TryGetValue(runKey, out Dictionary<ulong, long>? contributions))
+				if (!RunDamageContributionByRunKey.TryGetValue(runKey, out Dictionary<ulong, long>? contributions)
+					|| contributions.Count == 0)
 				{
-					// No combat data recorded yet for this run (e.g. first reward before any combat).
-					// Fall back to the player with the lowest NetId as a deterministic tiebreak.
-					ulong lowestNetId = ulong.MaxValue;
-					foreach (Player p in runState.Players)
-					{
-						if (p.NetId < lowestNetId)
-							lowestNetId = p.NetId;
-					}
-					return owner.NetId == lowestNetId;
+					// EN: No damage data recorded for this run. Nobody qualifies as weakest.
+					//     This is normal if no combat has occurred yet (e.g. reward node before first fight).
+					// ZH: 此跑图无伤害数据（可能尚未战斗），无人符合"最弱"条件。
+					Logger.Info($"IsOwnerWeakestRunDamageContributor: no damage data for run key {runKey}, returning false for player {owner.NetId}", 1);
+					return false;
 				}
 				ulong weakestId = 0;
 				long weakestDamage = long.MaxValue;
@@ -1795,13 +1860,88 @@ internal static class ModSupport
 						weakestTieBreakNetId = tieBreakNetId;
 					}
 				}
-				return weakestId == owner.NetId;
+				// EN: Log all players' damage for debugging desync reports.
+				// ZH: 记录所有玩家的伤害数据以便调试同步问题。
+				foreach (Player player in runState.Players)
+				{
+					contributions.TryGetValue(player.NetId, out long dmg);
+					Logger.Info($"IsOwnerWeakestRunDamageContributor: player {player.NetId} damage={dmg}", 1);
+				}
+				bool isWeakest = weakestId == owner.NetId;
+				Logger.Info($"IsOwnerWeakestRunDamageContributor: weakest={weakestId} owner={owner.NetId} result={isWeakest}", 1);
+				return isWeakest;
 			}
 		}
 		catch (Exception ex)
 		{
 			Logger.Warn($"IsOwnerWeakestRunDamageContributor failed: {ex.Message}", 1);
 			return false;
+		}
+	}
+
+	/// <summary>
+	/// EN: Builds a BBCode-colored damage summary for the weakest-player dialogue.
+	///     The owner's damage is shown in [red], other players' damage in [green].
+	/// ZH: 为最弱玩家对话构建BBCode着色的伤害摘要。拥有者伤害为[red]，队友为[green]。
+	/// </summary>
+	internal static string BuildDamageSummaryForWeakestDialogue(Player? owner)
+	{
+		try
+		{
+			EnsureRunDamageContributionsLoaded();
+			RunState? runState = owner?.RunState as RunState;
+			if (owner == null || runState == null || runState.Players.Count < 2)
+			{
+				return "";
+			}
+			if (!TryBuildCurrentRunKey(out string runKey))
+			{
+				return "";
+			}
+			lock (RunDamageContributionLock)
+			{
+				if (!RunDamageContributionByRunKey.TryGetValue(runKey, out Dictionary<ulong, long>? contributions)
+					|| contributions == null || contributions.Count == 0)
+				{
+					return "";
+				}
+				var sb = new StringBuilder();
+				sb.Append("\n\n");
+				sb.Append(ModLoc.T("Fun fact: ", "趣事："));
+				bool first = true;
+				for (int i = 0; i < runState.Players.Count; i++)
+				{
+					Player player = runState.Players[i];
+					contributions.TryGetValue(player.NetId, out long dmg);
+					string charName = player.Character?.Title?.GetFormattedText() ?? "???";
+					bool isOwner = player.NetId == owner.NetId;
+					string colorTag = isOwner ? "red" : "green";
+					if (!first) sb.Append(" ");
+					if (isOwner)
+					{
+						sb.Append(ModLoc.T(
+							$"You dealt [{colorTag}]{dmg:N0}[/{colorTag}] damage.",
+							$"你造成了 [{colorTag}]{dmg:N0}[/{colorTag}] 点伤害。"));
+					}
+					else
+					{
+						sb.Append(ModLoc.T(
+							$"Your friend {charName} dealt [{colorTag}]{dmg:N0}[/{colorTag}] damage.",
+							$"你的队友{charName}造成了 [{colorTag}]{dmg:N0}[/{colorTag}] 点伤害。"));
+					}
+					first = false;
+				}
+				sb.Append(" ");
+				sb.Append(ModLoc.T(
+					"You could tell them, or not. Maybe keep it a secret between us.",
+					"你可以告诉他们，也可以不说。也许我们之间的小秘密就好。"));
+				return sb.ToString();
+			}
+		}
+		catch (Exception ex)
+		{
+			Logger.Warn($"BuildDamageSummaryForWeakestDialogue failed: {ex.Message}", 1);
+			return "";
 		}
 	}
 

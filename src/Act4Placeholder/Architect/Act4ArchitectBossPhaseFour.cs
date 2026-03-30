@@ -358,10 +358,18 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		_phaseFourDeathSpeechTriggered = true;
 		try
 		{
-			NSpeechBubbleVfx bubble = CreateArchitectSpeechBubble(GetPhaseFourSpeech(2), VfxColor.Black, 3.2, preserveArchitectAnchorWhenDead: true);
+			Player reactingPlayer = ((IEnumerable<Player>)((MonsterModel)this).CombatState.Players)
+				.FirstOrDefault((Player p) => p?.Creature != null && p.Creature.IsAlive);
+			if (reactingPlayer?.Creature == null)
+			{
+				LogArchitect("ShowPhaseFourDeathSpeech:skipped-no-living-player");
+				return;
+			}
+			string speech = GetPlayerVictorySpeech(reactingPlayer.Character);
+			NSpeechBubbleVfx bubble = NSpeechBubbleVfx.Create(speech, reactingPlayer.Creature, 4.0, VfxColor.Blue);
 			if (bubble == null)
 			{
-				LogArchitect("ShowPhaseFourDeathSpeech:skipped-no-anchor");
+				LogArchitect("ShowPhaseFourDeathSpeech:skipped-no-bubble");
 				return;
 			}
 			AddCombatVfx(bubble);
@@ -370,6 +378,67 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		{
 			LogArchitect($"ShowPhaseFourDeathSpeech:failed error={ex.Message}");
 		}
+	}
+
+	private string GetPlayerVictorySpeech(CharacterModel character)
+	{
+		if (character is Necrobinder)
+		{
+			return ModLoc.T("Finally... I've avenged you, Father, Mother...", "终于……我为你们报仇了，父亲，母亲……",
+				fra: "Enfin... Je vous ai vengés, Père, Mère...",
+				deu: "Endlich... Ich habe euch gerächt, Vater, Mutter...",
+				jpn: "ついに……仇を討ったぞ、父さん、母さん……",
+				kor: "드디어... 복수했어요, 아버지, 어머니...",
+				por: "Finalmente... Eu os vinguei, Pai, Mãe...",
+				rus: "Наконец... Я отомстил за вас, отец, мать...",
+				spa: "Al fin... Los he vengado, Padre, Madre...");
+		}
+		if (character is Ironclad)
+		{
+			return ModLoc.T("Architect... dead. Now... Vakuu... you're next...", "建筑师……死了。现在……瓦库……你是下一个……",
+				fra: "Architecte... mort. Maintenant... Vakuu... à ton tour...",
+				deu: "Architekt... tot. Jetzt... Vakuu... du bist der Nächste...",
+				jpn: "建築家……死んだ。次は……ヴァクー……お前だ……",
+				kor: "건축가... 죽었다. 이제... 바쿠... 네 차례다...",
+				por: "Arquiteto... morto. Agora... Vakuu... você é o próximo...",
+				rus: "Архитектор... мёртв. Теперь... Ваку... ты следующий...",
+				spa: "Arquitecto... muerto. Ahora... Vakuu... tú sigues...");
+		}
+		if (character is Silent)
+		{
+			return ModLoc.T("...", "……",
+				fra: "...", deu: "...",
+				jpn: "……", kor: "...",
+				por: "...", rus: "...", spa: "...");
+		}
+		if (character is Defect)
+		{
+			return ModLoc.T("<whirr> ...Heart... acquired. Companion... soon...",
+				"<嗡嗡> ……心脏……获取完毕。伙伴……快了……",
+				fra: "<vrr> ...Cœur... acquis. Compagnon... bientôt...",
+				deu: "<surr> ...Herz... erhalten. Gefährte... bald...",
+				jpn: "<ウィーン> ……心臓……取得。仲間……もうすぐ……",
+				kor: "<윙윙> ...심장... 획득. 동료... 곧...",
+				por: "<whirr> ...Coração... adquirido. Companheiro... em breve...",
+				rus: "<жжж> ...Сердце... получено. Спутник... скоро...",
+				spa: "<whirr> ...Corazón... adquirido. Compañero... pronto...");
+		}
+		if (character is Regent)
+		{
+			return ModLoc.T("Hmph! Let that be a lesson in manners.",
+				"哼！让这成为一堂礼仪课。",
+				fra: "Hmph ! Que cela vous serve de leçon de savoir-vivre.",
+				deu: "Hmph! Das soll eine Lektion in Manieren sein.",
+				jpn: "フン！これが礼儀というものだ。",
+				kor: "흥! 이것이 예의에 대한 교훈이다.",
+				por: "Hmph! Que isso sirva de lição de boas maneiras.",
+				rus: "Хмф! Пусть это послужит уроком манер.",
+				spa: "¡Hmph! Que esto sea una lección de modales.");
+		}
+		return ModLoc.T("Is it finally over?...", "终于结束了吗？……",
+			fra: "C'est enfin fini ?...", deu: "Ist es endlich vorbei?...",
+			jpn: "ついに終わったのか？……", kor: "드디어 끝난 건가?...",
+			por: "Finalmente acabou?...", rus: "Это наконец-то кончилось?...", spa: "¿Por fin terminó?...");
 	}
 
 	private void PlayArchitectFakeDeathAnim()

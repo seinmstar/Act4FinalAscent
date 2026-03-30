@@ -25,7 +25,7 @@ namespace Act4Placeholder;
 [ModInitializer("Init")]
 public static class ModEntry
 {
-	public const string ModVersion = "0.1.2d";
+	public const string ModVersion = "0.1.2e";
 
 	private static readonly MegaCrit.Sts2.Core.Logging.Logger Logger =
 		new MegaCrit.Sts2.Core.Logging.Logger("Act4Placeholder", (LogType)0);

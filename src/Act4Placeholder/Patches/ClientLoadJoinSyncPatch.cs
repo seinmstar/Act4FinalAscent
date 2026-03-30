@@ -1,8 +1,9 @@
 //=============================================================================
 // ClientLoadJoinSyncPatch.cs | Act4Placeholder - Slay the Spire 2 Mod
-// EN: Appends brutal-mode flag, weakest-buff player IDs, and book-choice bitmask to ClientLoadJoinResponseMessage
-//     so that reconnecting clients receive the host's authoritative Act 4 state and don't
-//     diverge on IsBrutalAct4 / HasAct4WeakestBuff / stolen-tome checks that read host-only local files.
+// EN: Appends brutal-mode flag, weakest-buff player IDs, book-choice bitmask, and per-player damage
+//     contributions to ClientLoadJoinResponseMessage so that reconnecting clients receive the host's
+//     authoritative Act 4 state and don't diverge on IsBrutalAct4 / HasAct4WeakestBuff / weakest-player
+//     determination / stolen-tome checks that read host-only local files.
 // ZH: 将残暴模式标志、最弱增益玩家ID、以及偷书选择位掩码附加到ClientLoadJoinResponseMessage，
 //     使重连客户端能接收主机权威的第四幕状态，避免在读取仅主机拥有的本地文件时产生分歧。
 //=============================================================================
@@ -17,7 +18,8 @@ namespace Act4Placeholder;
 /// <summary>
 /// EN: HOST side - after the normal payload has been written, append a version-tagged Act4 block:
 ///     [ushort 0xA4C4] [bool isBrutal] [int(8) count] [ulong id] * count [int(8) bookBitmask]
-/// ZH: 主机侧——在正常负载写入完毕后，附加一个带版本标记的Act4数据块。
+///     [int(8) damagePlayerCount] ([ulong netId] [long damage]) * damagePlayerCount
+/// ZH: 主机侧——在正常负载写入完毕后，附加一个带版本标记的Act4数据块（含伤害贡献数据）。
 /// </summary>
 [HarmonyPatch(typeof(ClientLoadJoinResponseMessage), nameof(ClientLoadJoinResponseMessage.Serialize))]
 internal static class ClientLoadJoinResponseMessageSerializePatch
@@ -38,7 +40,16 @@ internal static class ClientLoadJoinResponseMessageSerializePatch
 				writer.WriteULong(id);
 			}
 			writer.WriteInt(bookChoiceBitmask & 0xFF, 8);
-			Log.Info($"[Act4Placeholder][JoinSync] Serialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={bookChoiceBitmask}", 1);
+			// EN: Append per-player damage contribution totals so clients can seed their tracking on rejoin.
+			// ZH: 附加每位玩家的伤害贡献总量，使客户端在重连时可以直接使用。
+			Dictionary<ulong, long> damageContributions = ModSupport.GetDamageContributionsForRun(__instance.serializableRun);
+			writer.WriteInt(damageContributions.Count, 8);
+			foreach (KeyValuePair<ulong, long> kv in damageContributions)
+			{
+				writer.WriteULong(kv.Key);
+				writer.WriteLong(kv.Value);
+			}
+			Log.Info($"[Act4Placeholder][JoinSync] Serialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={bookChoiceBitmask} damagePlayerCount={damageContributions.Count}", 1);
 		}
 		catch (System.Exception ex)
 		{
@@ -85,8 +96,27 @@ internal static class ClientLoadJoinResponseMessageDeserializePatch
 			{
 				bookChoiceBitmask = reader.ReadInt(8);
 			}
-			ModSupport.SetPendingJoinSyncState(__instance.serializableRun.StartTime, isBrutal, ids, bookChoiceBitmask);
-			Log.Info($"[Act4Placeholder][JoinSync] Deserialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")}", 1);
+			// EN: Read per-player damage contribution totals (added after book bitmask).
+			//     Gracefully skip if the host is running an older mod version without this data.
+			// ZH: 读取每位玩家的伤害贡献总量（在偷书位掩码之后添加）。若主机版本较旧则跳过。
+			Dictionary<ulong, long>? damageContributions = null;
+			bitsRemaining = reader.Buffer.Length * 8 - reader.BitPosition;
+			if (bitsRemaining >= 8)
+			{
+				int damagePlayerCount = reader.ReadInt(8);
+				if (damagePlayerCount > 0)
+				{
+					damageContributions = new Dictionary<ulong, long>(damagePlayerCount);
+					for (int i = 0; i < damagePlayerCount; i++)
+					{
+						ulong netId = reader.ReadULong();
+						long damage = reader.ReadLong();
+						damageContributions[netId] = damage;
+					}
+				}
+			}
+			ModSupport.SetPendingJoinSyncState(__instance.serializableRun.StartTime, isBrutal, ids, bookChoiceBitmask, damageContributions);
+			Log.Info($"[Act4Placeholder][JoinSync] Deserialized Act4 join state: startTime={__instance.serializableRun.StartTime} brutal={isBrutal} weakestCount={ids.Count} bookBitmask={(bookChoiceBitmask.HasValue ? bookChoiceBitmask.Value.ToString() : "none")} damagePlayerCount={damageContributions?.Count ?? 0}", 1);
 		}
 		catch (System.Exception ex)
 		{

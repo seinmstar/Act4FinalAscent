@@ -101,6 +101,10 @@ public abstract class Act4RewardEventBase : EventModel
 	protected override IReadOnlyList<EventOption> GenerateInitialOptions()
 	{
 		StageIndex = 0;
+		// Pre-roll all stages to lock in offer sets and offeredKeys deterministically
+		// before any choices are processed, preventing timing-dependent roll differences.
+		for (int i = 0; i < TotalStages; i++)
+			GetOrRollOffersForStage(i);
 		return BuildStageOptions();
 	}
 
@@ -373,9 +377,12 @@ public abstract class Act4RewardEventBase : EventModel
 				}
 				return EventOption.FromRelic(relic, eventModel, async () =>
 				{
+					// Advance stage synchronously first so CurrentOptions updates before
+					// the next network message is processed (prevents MP desync).
+					Task stageAdvance = onChosen.Invoke();
 					if (((EventModel)eventModel).Owner != null)
 						await RelicCmd.Obtain(relic, ((EventModel)eventModel).Owner, -1);
-					await onChosen.Invoke();
+					await stageAdvance;
 				}, key);
 			}
 		};
@@ -392,8 +399,9 @@ public abstract class Act4RewardEventBase : EventModel
 			{
 				return CreateSimpleOption(eventModel, async () =>
 				{
+					Task stageAdvance = onChosen();
 					await eventModel.GainGoldAsync((decimal)amount);
-					await onChosen();
+					await stageAdvance;
 				}, key, $"{amount} Gold", $"Gain {amount} gold.");
 			}
 		};
@@ -410,8 +418,9 @@ public abstract class Act4RewardEventBase : EventModel
 			{
 				return CreateSimpleOption(eventModel, async () =>
 				{
+					Task stageAdvance = onChosen();
 					await eventModel.DuplicateChosenCardAsync();
-					await onChosen();
+					await stageAdvance;
 				}, key, "Duplicate a Card", "Choose a card in your deck to duplicate.");
 			}
 		};
@@ -426,8 +435,9 @@ public abstract class Act4RewardEventBase : EventModel
 			AutoGrant = (e) => e.GainBloodPotionAsync(),
 			CreateOption = (Act4RewardEventBase eventModel, Func<Task> onChosen) => CreateSimpleOption(eventModel, async delegate
 			{
+				Task stageAdvance = onChosen();
 				await eventModel.GainBloodPotionAsync();
-				await onChosen();
+				await stageAdvance;
 			}, key, "Blood Potion", "Gain a Blood Potion.")
 		};
 	}
@@ -479,8 +489,9 @@ public abstract class Act4RewardEventBase : EventModel
 			{
 				return CreateSimpleOption(eventModel, async () =>
 				{
+					Task stageAdvance = onChosen();
 					await eventModel.GainFairyPotionAsync();
-					await onChosen();
+					await stageAdvance;
 				}, key, "Fairy in a Bottle", "Gain a Fairy in a Bottle.", new IHoverTip[1] { HoverTipFactory.FromPotion<FairyInABottle>() });
 			}
 		};
