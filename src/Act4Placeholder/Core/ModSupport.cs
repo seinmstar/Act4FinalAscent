@@ -757,6 +757,29 @@ internal static class ModSupport
 		return won ? 300 : 100;
 	}
 
+	// EN: Version-safe wrapper for ScoreUtility.CalculateScore (handles both old and new beta signatures).
+	// ZH: ScoreUtility.CalculateScore 的版本安全包装器（同时兼容旧版与新测试版签名）。
+	internal static int CalculateScoreSafe(SerializableRun run, bool won)
+	{
+		try
+		{
+			var newMethod = typeof(ScoreUtility).GetMethod(nameof(ScoreUtility.CalculateScore),
+				new[] { typeof(SerializableRun), typeof(ulong), typeof(bool) });
+			if (newMethod != null)
+			{
+				ulong playerId = 0UL;
+				try { if (run.Players?.Count > 0) playerId = run.Players[0].NetId; } catch { }
+				return (int)newMethod.Invoke(null, new object[] { run, playerId, won })!;
+			}
+			var oldMethod = typeof(ScoreUtility).GetMethod(nameof(ScoreUtility.CalculateScore),
+				new[] { typeof(SerializableRun), typeof(bool) });
+			if (oldMethod != null)
+				return (int)oldMethod.Invoke(null, new object[] { run, won })!;
+		}
+		catch { }
+		return 0;
+	}
+
 	internal static void ApplyAct4SaveMarkers(SerializableRun? run, RunState? runState)
 	{
 		if (run == null)
@@ -2177,8 +2200,6 @@ internal static class ModSupport
 				Directory.CreateDirectory(directoryName);
 			}
 			File.WriteAllText(path, text);
-			Logger.Info($"Saved {description} to {path}", 1);
-			Act4Logger.Info($"Saved {description}.");
 		}
 		catch (Exception ex)
 		{

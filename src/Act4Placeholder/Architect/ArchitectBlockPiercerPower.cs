@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.ValueProps;
 
 namespace Act4Placeholder;
@@ -51,6 +52,14 @@ internal sealed class ArchitectBlockPiercerPower : PowerModel
 		{
 			Creature hitTarget = targetResults.Key;
 			if (hitTarget == null || !hitTarget.IsAlive)
+			{
+				continue;
+			}
+			// EN: Skip pierce when Intangible is active — the damage cap to 1 caused the
+			//     full-block result, not the player's actual block investment.
+			// ZH: 若目标拥有无形效果则跳过穿刺——伤害上限降为1是无形能力造成的，
+			//     并非玩家主动堆砌了足够的格挡量。
+			if (hitTarget.HasPower<IntangiblePower>())
 			{
 				continue;
 			}

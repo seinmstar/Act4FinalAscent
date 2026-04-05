@@ -466,7 +466,7 @@ internal static class SingleplayerRunSlotsPatches
 			RunHistoryUtilities.CreateRunHistoryEntry(run, victory: false, isAbandoned: true, run.PlatformType);
 			if (run.DailyTime.HasValue)
 			{
-				int score = ScoreUtility.CalculateScore(run, won: false);
+				int score = ModSupport.CalculateScoreSafe(run, won: false);
 				TaskHelper.RunSafely(DailyRunUtility.UploadScore(run.DailyTime.Value, score, run.Players));
 			}
 		}

@@ -168,12 +168,12 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		}
 		if (IsPhaseFour)
 		{
-			LogArchitect("OnDieToDoom:phase-four-queue-finish-run");
+			LogArchitectKey("OnDieToDoom:phase-four-queue-finish-run");
 			QueuePhaseFourFinishRun("OnDieToDoom");
 			return;
 		}
 		int nextPhaseNumber = IsPhaseThree ? 4 : (IsPhaseTwo ? 3 : 2);
-		LogArchitect($"OnDieToDoom:redirect-to-phase-transition nextPhase={nextPhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp}");
+		LogArchitectKey($"OnDieToDoom:redirect-to-phase-transition nextPhase={nextPhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp}");
 		BeginAwaitingPhaseTransition(nextPhaseNumber);
 	}
 
@@ -188,7 +188,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		{
 			return;
 		}
-		LogArchitect("AfterDiedToDoom:phase-four-finish-run");
+		LogArchitectKey("AfterDiedToDoom:phase-four-finish-run");
 		QueuePhaseFourFinishRun("AfterDiedToDoom");
 	}
 
@@ -279,6 +279,14 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 
 	private void LogArchitect(string message)
 	{
+		// Verbose logging, off by default to reduce disk writes per run.
+		// Enable via admin/debug if needed for troubleshooting.
+		if (Act4Config.ArchitectVerboseLogging)
+			GD.Print($"[Act4Placeholder][Architect] {message}");
+	}
+
+	private void LogArchitectKey(string message)
+	{
 		GD.Print($"[Act4Placeholder][Architect] {message}");
 	}
 
@@ -321,7 +329,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 	/// ZH: 初始化战斗内状态、表现、能力与开场动作。
 	public override async Task AfterAddedToRoom()
 	{
-		LogArchitect($"AfterAddedToRoom:start hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp} phase={PhaseNumber} pending={PendingPhaseNumber}");
+		LogArchitectKey($"AfterAddedToRoom:start hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp} phase={PhaseNumber} pending={PendingPhaseNumber}");
 		await base.AfterAddedToRoom();
 		LogArchitect("AfterAddedToRoom:after-base");
 		// EN: The engine calls ScaleMonsterHpForMultiplayer (hp × playerCount × perActFactor)
@@ -384,7 +392,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		ShowArchitectSpeech(GetArchitectOpeningSpeech(), VfxColor.Blue, 4.2);
 		_ambientPulseCount = 0;
 		_ = TaskHelper.RunSafely(RunAmbientVfxLoopAsync(++_ambientVfxLoopGeneration));
-		LogArchitect("AfterAddedToRoom:complete");
+		LogArchitectKey("AfterAddedToRoom:complete");
 	}
 
 	public override void BeforeRemovedFromRoom()
@@ -579,7 +587,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 				LogArchitect("AfterSideTurnStart:summon-intent-scheduled");
 			}
 			await RefreshPreAttackTrackerAsync();
-			LogArchitect($"AfterSideTurnStart:player-ready move={((MonsterModel)this).NextMove.Id} attackIntent={((MonsterModel)this).IntendsToAttack}");
+			LogArchitectKey($"Round side=Player hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp} phase={PhaseNumber} move={((MonsterModel)this).NextMove.Id}");
 		}
 		finally
 		{
