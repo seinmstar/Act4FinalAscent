@@ -23,15 +23,15 @@ internal static class Act4Config
 	// =========================================================================
 
 	/// EN: Flail Knight HP (1p normal).       | ZH: 连枷骑士HP（1人普通）。
-	internal const int EliteFlailKnightHp    = 147;
+	internal const int EliteFlailKnightHp    = 145;
 	/// EN: Spectral Knight HP (1p normal).    | ZH: 幽灵骑士HP（1人普通）。
-	internal const int EliteSpectralKnightHp = 124;
+	internal const int EliteSpectralKnightHp = 120;
 	/// EN: Magi Knight HP (1p normal).        | ZH: 法术骑士HP（1人普通）。
-	internal const int EliteMagiKnightHp     = 91;
+	internal const int EliteMagiKnightHp     = 90;
 	/// EN: Mecha Knight HP (1p normal), intentionally higher than Soul Nexus. | ZH: 机械骑士HP（1人普通）——刻意高于灵魂枢纽。
-	internal const int EliteMechaKnightHp    = 580;
+	internal const int EliteMechaKnightHp    = 480;
 	/// EN: Soul Nexus HP (1p normal).         | ZH: 灵魂枢纽HP（1人普通）。
-	internal const int EliteSoulNexusHp      = 500;
+	internal const int EliteSoulNexusHp      = 400;
 
 	// =========================================================================
 	// Section 2: MULTIPLAYER HP MULTIPLIERS
@@ -72,7 +72,7 @@ internal static class Act4Config
 	internal const decimal Ascension9DmgBonus = 0.05m;
 
 	/// EN: Elite room damage multiplier, applied to all Act 4 elite enemies (knights, mecha, soul nexus). | ZH: 精英房伤害倍率——应用于所有第四幕精英敌人。
-	internal const decimal EliteDamageMultiplier = 0.9m;
+	internal const decimal EliteDamageMultiplier = 0.8m;
 
 	// =========================================================================
 	// Section 4: ARCHITECT BOSS HP
@@ -90,18 +90,15 @@ internal static class Act4Config
 	/// EN: 3p+ Phase 1 HP = SoloHp × playerCount × this. | ZH: 3人以上一阶段HP = 单人HP × 人数 × 本值。
 	internal const decimal ArchitectMpPerPlayerScaling = 1.3m;
 
-	/// EN: Phase 2 max HP = Phase1 snapshot × this.
-	///     Scaled from old P1=525 so absolute P2 HP is slightly lower than before (525×1.4=735 → 400×1.78=712).
-	/// ZH: 二阶段最大HP = 一阶段HP快照 × 本值。从原P1=525按比例换算并小幅下调（735→712）。
-	internal const decimal ArchitectP2HpMultiplier   = 1.78m;
-	/// EN: Phase 3 max HP = Phase1 snapshot × this.
-	///     Scaled from old (525×1.6=840) → 400×2.1=840, same absolute value maintained.
-	/// ZH: 三阶段最大HP = 一阶段HP快照 × 本值。保持与原来相同的绝对值（840）。
-	internal const decimal ArchitectP3HpMultiplier   = 2.1m;
-	/// EN: Phase 4 max HP = Phase1 snapshot × this.
-	///     Scaled from old (525×3.6=1890) → 400×4.73=1892, same absolute value maintained.
-	/// ZH: 四阶段最大HP = 一阶段HP快照 × 本值。保持与原来相同的绝对值（~1890）。
-	internal const decimal ArchitectP4HpMultiplier   = 4.73m;
+	/// EN: Phase 2 max HP = Phase1 snapshot × this (668).
+	/// ZH: 二阶段最大HP = 一阶段HP快照 × 本值（668）。
+	internal const decimal ArchitectP2HpMultiplier   = 1.67m;
+	/// EN: Phase 3 max HP = Phase1 snapshot × this (800).
+	/// ZH: 三阶段最大HP = 一阶段HP快照 × 本值（800）。
+	internal const decimal ArchitectP3HpMultiplier   = 2.0m;
+	/// EN: Phase 4 max HP = Phase1 snapshot × this (1800).
+	/// ZH: 四阶段最大HP = 一阶段HP快照 × 本值（1800）。
+	internal const decimal ArchitectP4HpMultiplier   = 4.5m;
 
 	// =========================================================================
 	// Section 5: ARCHITECT BOSS DAMAGE
@@ -117,15 +114,15 @@ internal static class Act4Config
 
 	// -- Heavy-attack (single-target) damage bases ----------------------------
 	internal const int ArchitectP1HeavyDamage = 9;
-	internal const int ArchitectP2HeavyDamage = 15;
-	internal const int ArchitectP3HeavyDamage = 14;
-	internal const int ArchitectP4HeavyDamage = 11;
+	internal const int ArchitectP2HeavyDamage = 14;
+	internal const int ArchitectP3HeavyDamage = 13;
+	internal const int ArchitectP4HeavyDamage = 10;
 
 	// -- Multi-hit attack per-hit damage bases --------------------------------
 	internal const int ArchitectP1MultiDamage = 3;
-	internal const int ArchitectP2MultiDamage = 5;
-	internal const int ArchitectP3MultiDamage = 3;
-	internal const int ArchitectP4MultiDamage = 3;
+	internal const int ArchitectP2MultiDamage = 4;
+	internal const int ArchitectP3MultiDamage = 2;
+	internal const int ArchitectP4MultiDamage = 2;
 
 	// -- Multi-hit attack hit counts ------------------------------------------
 	internal const int ArchitectP1MultiHits   = 3;
@@ -157,17 +154,17 @@ internal static class Act4Config
 	//     超出上限：每OverCapCadence轮获得1点力量（所有阶段相同）。
 	// =========================================================================
 
-	internal const int ArchitectP1StrengthCap = 3;
-	internal const int ArchitectP2StrengthCap = 6;
-	internal const int ArchitectP3StrengthCap = 9;
-	internal const int ArchitectP4StrengthCap = 12; // Pretty sure Act 4 doesn't have Strength
+	internal const int ArchitectP1StrengthCap = 2;
+	internal const int ArchitectP2StrengthCap = 4;
+	internal const int ArchitectP3StrengthCap = 6;
+	internal const int ArchitectP4StrengthCap = 8; // Pretty sure Act 4 doesn't have Strength
 
 	/// EN: Under-cap strength cadence for phases 1–2 (gain every N rounds). | ZH: 一二阶段低于上限时的力量节奏（每N轮获得）。
 	internal const int ArchitectP1P2UnderCapCadence = 3;
 	/// EN: Under-cap strength cadence for phase 3 (every N rounds).         | ZH: 三阶段低于上限时的力量节奏（每N轮获得）。
 	internal const int ArchitectP3UnderCapCadence   = 2;
 	/// EN: Over-cap strength cadence for all phases (every N rounds).        | ZH: 所有阶段超出上限时的力量节奏（每N轮获得）。
-	internal const int ArchitectOverCapCadence       = 3;
+	internal const int ArchitectOverCapCadence       = 4;
 
 	// =========================================================================
 	// Section 7: ARCHITECT PHASE BEHAVIOR
@@ -176,7 +173,7 @@ internal static class Act4Config
 	/// EN: Number of hits in Phase 2 retaliation multi-attack. | ZH: 二阶段反击多段攻击的打击次数。
 	internal const int ArchitectP2RetaliationHits    = 3;
 	/// EN: Block Piercer stacks applied at Phase 3 start.      | ZH: 三阶段开始时的穿透格挡层数。
-	internal const int ArchitectP3BlockPiercerStacks = 5;
+	internal const int ArchitectP3BlockPiercerStacks = 4;
 
 	/// EN: Phase 4 revival minimum HP floor as a fraction of max HP (0.35 = 35%). | ZH: 四阶段复活后的最低HP比例（0.35 = 35%）。
 	internal const decimal ArchitectP4ReviveHpFloor       = 0.35m;
@@ -210,12 +207,12 @@ internal static class Act4Config
 	// =========================================================================
 
 	/// EN: Shadow Champion target HP (solo).                      | ZH: 单人暗影冠军目标HP。
-	internal const int     ArchitectShadowHp              = 485;
+	internal const int     ArchitectShadowHp              = 420;
 	/// EN: Phase 4 Linked Shadow HP per character type (solo, 5 summoned simultaneously). | ZH: 四阶段连结之影各角色单人HP（同时5只）。
-	internal const int     LinkedShadowIroncladHp         = 167;
-	internal const int     LinkedShadowSilentHp           = 123;
-	internal const int     LinkedShadowDefectHp           = 133;
-	internal const int     LinkedShadowNecrobinderHp      = 142;
+	internal const int     LinkedShadowIroncladHp         = 160;
+	internal const int     LinkedShadowSilentHp           = 110;
+	internal const int     LinkedShadowDefectHp           = 125;
+	internal const int     LinkedShadowNecrobinderHp      = 140;
 	internal const int     LinkedShadowRegentHp           = 150;
 	/// EN: Shadow HP multiplier at 2 players (base).              | ZH: 2人联机暗影HP倍率（基础值）。
 	internal const decimal ShadowMp2pBase            = 0.8m;
@@ -234,8 +231,8 @@ internal static class Act4Config
 	//     公式：实际伤害 = 上取整(基础×倍率) + 联机加成（≥3人時）
 	// =========================================================================
 
-	/// EN: Global damage multiplier applied to all Phase 4 linked shadows on summon (65%). | ZH: 召唤时应用于所有四阶段连结之影的全局伤害倍率（65%）。
-	internal const decimal LinkedShadowDamageMultiplier = 0.65m;
+	/// EN: Global damage multiplier applied to all Phase 4 linked shadows on summon (50%). | ZH: 召唤时应用于所有四阶段连结之影的全局伤害倍率（50%）。
+	internal const decimal LinkedShadowDamageMultiplier = 0.5m;
 	/// EN: Extra multi-hit damage per hit at 3+ players (no scaling exists otherwise). | ZH: 3人以上联机时多段攻击每段额外伤害（原本无玩家缩放）。
 	internal const int LinkedShadowCoOpMultiBonus3p  = 1;
 	/// EN: Extra heavy-attack damage at 3+ players.                                    | ZH: 3人以上联机时单体攻击额外伤害。
@@ -265,4 +262,12 @@ internal static class Act4Config
 	internal const int LinkedShadowNecrobinderMultiHits = 3;
 	internal const int LinkedShadowNecrobinderBaseMulti = 4;   // eff: ceil(4×0.5)=2/hit, total=6
 	internal const int LinkedShadowNecrobinderBaseHeavy = 9;  // eff: ceil(9×0.5)=4.5
+
+	// =========================================================================
+	// Section: DEBUG / LOGGING
+	// =========================================================================
+
+	/// EN: When true, Architect logs every hook call (verbose). Off by default to reduce disk writes.
+	/// ZH: 为 true 时建筑师记录每个钩子调用(冗长)，默认关闭以减少磁盘写入。
+	internal const bool ArchitectVerboseLogging = false;
 }

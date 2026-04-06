@@ -25,7 +25,7 @@ namespace Act4Placeholder;
 [ModInitializer("Init")]
 public static class ModEntry
 {
-	public const string ModVersion = "0.1.2e";
+	public const string ModVersion = "0.1.2f";
 
 	private static readonly MegaCrit.Sts2.Core.Logging.Logger Logger =
 		new MegaCrit.Sts2.Core.Logging.Logger("Act4Placeholder", (LogType)0);
@@ -375,6 +375,8 @@ public static class ModEntry
 
 		if (TryPatch(harmony, typeof(RunManagerToSaveAct4Patch), "Save - RunManager.ToSave")) success++; else fail++;
 		if (TryPatch(harmony, typeof(RunStateFromSerializableAct4Patch), "Save - RunState.FromSerializable")) success++; else fail++;
+		if (TryPatch(harmony, typeof(ClientLoadJoinResponseMessageSerializePatch), "SaveSync - ClientLoadJoinResponseMessage.Serialize")) success++; else fail++;
+		if (TryPatch(harmony, typeof(ClientLoadJoinResponseMessageDeserializePatch), "SaveSync - ClientLoadJoinResponseMessage.Deserialize")) success++; else fail++;
 		if (TryPatch(harmony, typeof(ProgressSaveManagerLoadProgressSanitizePatch), "Save - ProgressSaveManager.LoadProgress")) success++; else fail++;
 		if (TryPatch(harmony, typeof(ProgressSaveManagerAct4EpochSuppressPatch), "Save - ProgressSaveManager.ObtainCharUnlockEpoch")) success++; else fail++;
 		if (TryPatch(harmony, typeof(ScoreUtilityCalculateScoreRunStatePatch), "Score - ScoreUtility.CalculateScore(IRunState)")) success++; else fail++;

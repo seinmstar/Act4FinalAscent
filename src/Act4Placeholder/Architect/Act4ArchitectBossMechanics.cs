@@ -824,9 +824,9 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		{
 			Guardbot => 50,
 			Noisebot => 45,
-			SpectralKnight => 179,
-			MagiKnight => 155,
-			ArchitectSummonedFogmog => 40,
+			SpectralKnight => 150,
+			MagiKnight => 120,
+			ArchitectSummonedFogmog => 30,
 			Phase4LinkedShadow pls => pls.BaseLinkedShadowHp, // must precede ArchitectShadowChampion (is subtype)
 			ArchitectShadowChampion => Act4Config.ArchitectShadowHp,
 			_ => 0  // unknown summon: leave HP unchanged
@@ -1335,7 +1335,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		// When all Phase 3 shadows are eliminated, stun the Architect for a turn.
 		if (allShadowsJustDied && !((MonsterModel)this).Creature.IsDead && !IsAwaitingPhaseTransition)
 		{
-			LogArchitect("SyncSummonLinkedThorns:all-shadows-dead-stun");
+			LogArchitectKey("SyncSummonLinkedThorns:all-shadows-dead-stun");
 			await PowerCmd.SetAmount<ArchitectStunnedPower>(((MonsterModel)this).Creature, 1m, ((MonsterModel)this).Creature, (CardModel)null);
 			await CreatureCmd.Stun(((MonsterModel)this).Creature, PhaseThreeStunnedMove, "PHASE_THREE_RANDOM");
 			AddCombatVfx(NStunnedVfx.Create(((MonsterModel)this).Creature));
@@ -1354,7 +1354,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		}
 		_phaseFourFinishRunQueued = true;
 		Act4AudioHelper.StopModBgm();
-		LogArchitect($"QueuePhaseFourFinishRun source={source}");
+		LogArchitectKey($"QueuePhaseFourFinishRun source={source}");
 		TaskHelper.RunSafely(ModSupport.FinishRunAfterAct4BossAsync(RunManager.Instance));
 	}
 
@@ -1464,7 +1464,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		{
 			_armPhaseThreeJudgmentOnEnemyTurnStart = true;
 		}
-		LogArchitect($"RetaliationTriggered phase={PhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp}");
+		LogArchitectKey($"RetaliationTriggered phase={PhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp}");
 	}
 
 	/// EN: Watchdog that clears the retaliation guard flag if the player turn never advances within 10 s.
@@ -1543,7 +1543,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 			await CreatureCmd.Stun(((MonsterModel)this).Creature, PhaseTwoStunnedMove, "PHASE_TWO_RANDOM");
 			AddCombatVfx(NStunnedVfx.Create(((MonsterModel)this).Creature));
 			ShowArchitectSpeech("Too much.", VfxColor.Purple, 2.4);
-			LogArchitect($"AllOrNothing:stunned damagePercent={damagePercent} thresholdPercent={thresholdPercent}");
+			LogArchitectKey($"AllOrNothing:stunned damagePercent={damagePercent} thresholdPercent={thresholdPercent}");
 			return;
 		}
 		if (_currentPlayerRoundDamageTaken > 0)
@@ -1606,7 +1606,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 				await CleansePlayerBuffsAsync(player);
 		}
 		ShowArchitectSpeech("Judgment falls.", VfxColor.Black, 2.8);
-		LogArchitect($"Judgment:resolved triggered damageTaken={_currentPlayerRoundDamageTaken}");
+		LogArchitectKey($"Judgment:resolved triggered damageTaken={_currentPlayerRoundDamageTaken}");
 	}
 
 	private async Task CleansePlayerBuffsAsync(Player player)
@@ -1961,7 +1961,7 @@ public sealed partial class Act4ArchitectBoss : MonsterModel
 		SfxCmd.Play("event:/sfx/enemy/enemy_attacks/fogmog/fogmog_summon");
 		await SummonSpecificMinionAsync(((MonsterModel)ModelDb.Monster<ArchitectSummonedFogmog>()).ToMutable());
 		_pendingSummonLinkedThornsSync = true;
-		LogArchitect($"EmergencyFogmogTriggered phase={PhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp} summons={GetCurrentActiveSummonCount()}");
+		LogArchitectKey($"EmergencyFogmogTriggered phase={PhaseNumber} hp={((MonsterModel)this).Creature.CurrentHp}/{((MonsterModel)this).Creature.MaxHp} summons={GetCurrentActiveSummonCount()}");
 	}
 
 	private void ApplyArchitectBounds(NCreature creatureNode)

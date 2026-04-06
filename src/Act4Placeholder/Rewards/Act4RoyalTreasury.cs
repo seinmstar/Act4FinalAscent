@@ -20,7 +20,7 @@ namespace Act4Placeholder;
 
 public sealed class Act4RoyalTreasury : Act4RewardEventBase
 {
-	private const decimal FinalMaxHpBonusRatio = 0.4m; // EN: ratio tuning value, ZH: 比例参数
+	private const decimal FinalMaxHpBonusRatio = 0.5m; // EN: ratio tuning value, ZH: 比例参数
 
 	private enum RoyalFinalBonus
 	{
@@ -51,6 +51,8 @@ public sealed class Act4RoyalTreasury : Act4RewardEventBase
 	}
 
 	private bool _hasShownFinalBonusChoice;
+
+	private bool _hasShownDuplicateChoice;
 
 	private bool _weakestBonusEligibilityResolved;
 
@@ -103,15 +105,13 @@ public sealed class Act4RoyalTreasury : Act4RewardEventBase
 		StageIndex++;
 		if (StageIndex >= TotalStages)
 		{
-			if (!_hasShownFinalBonusChoice)
+			if (!_hasShownDuplicateChoice)
 			{
-				_hasShownFinalBonusChoice = true;
-				SetEventState(Act4RewardEventBase.PlainText(ModLoc.T("The trader offers one final blessing before you depart.", "离开之前，商人又给出了最后一份祝福。", fra: "Le marchand offre une derniere benediction avant votre depart.", deu: "Der Handler bietet einen letzten Segen an, bevor Sie aufbrechen.", jpn: "商人は出発前に最後の祝福を提供します。", kor: "상인이 출발하기 전에 마지막 축복을 제공합니다.", por: "O comerciante oferece uma ultima bencao antes de voce partir.", rus: "Торговец предлагает последнее благословение перед вашим уходом.", spa: "El comerciante ofrece una ultima bendicion antes de que partas.")), new EventOption[1]
-				{
-					Act4RewardEventBase.CreateSimpleOption(this, FinishFinalDuplicateChoiceAsync, "ACT4_ROYAL_TREASURY_FINAL_BLESSING",
-						ModLoc.T("Claim the final blessing", "领取最终祝福", fra: "Reclamer la derniere benediction", deu: "Die letzte Segnung annehmen", jpn: "最後の祝福を受け取る", kor: "마지막 축복을 받기", por: "Reivindicar a bencao final", rus: "Получить последнее благословение", spa: "Reclamar la bendicion final"),
-						ModLoc.T("Gain +40% Max HP and fully heal.", "最大生命值 +40%，并完全恢复生命。", fra: "Gagnez +40% de PV max et recuperez tous vos PV.", deu: "Erhalte +40% Max. LP und heile vollstandig.", jpn: "最大HP +40%、完全回復。", kor: "최대 HP +40%, 완전 회복.", por: "Obtenha +40% de HP max. e cure completamente.", rus: "+40% к макс. ОЗ и полное лечение.", spa: "Gana +40% de HP max. y cura completamente."))
-				});
+				ShowDuplicateCardScreen();
+			}
+			else if (!_hasShownFinalBonusChoice)
+			{
+				ShowFinalBlessingScreen();
 			}
 		}
 		else
@@ -121,9 +121,58 @@ public sealed class Act4RoyalTreasury : Act4RewardEventBase
 		return Task.CompletedTask;
 	}
 
+	private void ShowDuplicateCardScreen()
+	{
+		_hasShownDuplicateChoice = true;
+		SetEventState(Act4RewardEventBase.PlainText(ModLoc.T(
+			"The trader presents one last gift: a chance to duplicate a card from your deck.",
+			"商人递上最后一份礼物——从牌组中复制一张卡牌的机会。",
+			fra: "Le marchand offre un dernier cadeau : la possibilite de dupliquer une carte de votre deck.",
+			deu: "Der Handler prasentiert ein letztes Geschenk: die Moglichkeit, eine Karte aus Ihrem Deck zu duplizieren.",
+			jpn: "商人が最後の贈り物を差し出す——デッキからカードを1枚複製する機会。",
+			kor: "상인이 마지막 선물을 건넵니다: 덱에서 카드 하나를 복제할 기회입니다.",
+			por: "O comerciante apresenta um ultimo presente: a chance de duplicar uma carta do seu deck.",
+			rus: "Торговец преподносит последний дар: возможность дублировать карту из вашей колоды.",
+			spa: "El comerciante presenta un ultimo regalo: la oportunidad de duplicar una carta de tu mazo."
+		)), new EventOption[1]
+		{
+			Act4RewardEventBase.CreateSimpleOption(this, HandleDuplicateCardAsync, "ACT4_ROYAL_TREASURY_DUPLICATE_CARD",
+				ModLoc.T("Duplicate a Card", "复制一张卡牌",
+					fra: "Dupliquer une carte", deu: "Eine Karte duplizieren",
+					jpn: "カードを複製する", kor: "카드 복제하기",
+					por: "Duplicar uma carta", rus: "Дублировать карту",
+					spa: "Duplicar una carta"),
+				ModLoc.T("Choose a card from your deck to duplicate.", "从牌组中选择一张卡牌进行复制。",
+					fra: "Choisissez une carte de votre deck a dupliquer.",
+					deu: "Wahlen Sie eine Karte aus Ihrem Deck zum Duplizieren.",
+					jpn: "デッキからカードを選んで複製する。",
+					kor: "덱에서 카드를 선택하여 복제합니다.",
+					por: "Escolha uma carta do seu deck para duplicar.",
+					rus: "Выберите карту из вашей колоды для дублирования.",
+					spa: "Elige una carta de tu mazo para duplicar."))
+		});
+	}
+
+	private void ShowFinalBlessingScreen()
+	{
+		_hasShownFinalBonusChoice = true;
+		SetEventState(Act4RewardEventBase.PlainText(ModLoc.T("The trader offers one final blessing before you depart.", "离开之前，商人又给出了最后一份祝福。", fra: "Le marchand offre une derniere benediction avant votre depart.", deu: "Der Handler bietet einen letzten Segen an, bevor Sie aufbrechen.", jpn: "商人は出発前に最後の祝福を提供します。", kor: "상인이 출발하기 전에 마지막 축복을 제공합니다.", por: "O comerciante oferece uma ultima bencao antes de voce partir.", rus: "Торговец предлагает последнее благословение перед вашим уходом.", spa: "El comerciante ofrece una ultima bendicion antes de que partas.")), new EventOption[1]
+		{
+			Act4RewardEventBase.CreateSimpleOption(this, FinishFinalDuplicateChoiceAsync, "ACT4_ROYAL_TREASURY_FINAL_BLESSING",
+				ModLoc.T("Claim the final blessing", "领取最终祝福", fra: "Reclamer la derniere benediction", deu: "Die letzte Segnung annehmen", jpn: "最後の祝福を受け取る", kor: "마지막 축복을 받기", por: "Reivindicar a bencao final", rus: "Получить последнее благословение", spa: "Reclamar la bendicion final"),
+				ModLoc.T("Gain +50% Max HP and fully heal.", "最大生命值 +50%，并完全恢复生命。", fra: "Gagnez +50% de PV max et recuperez tous vos PV.", deu: "Erhalte +50% Max. LP und heile vollstandig.", jpn: "最大HP +50%、完全回復。", kor: "최대 HP +50%, 완전 회복.", por: "Obtenha +50% de HP max. e cure completamente.", rus: "+50% к макс. ОЗ и полное лечение.", spa: "Gana +50% de HP max. y cura completamente."))
+		});
+	}
+
+	private async Task HandleDuplicateCardAsync()
+	{
+		await GainDuplicateCardOrGoldAsync();
+		ShowFinalBlessingScreen();
+	}
+
 	private void ShowFinalSuppliesChoice()
 	{
-		SetEventState(Act4RewardEventBase.PlainText(ModLoc.T("The trader nods, then opens the final cache so you can see exactly what is being pressed into your hands.", "商人点了点头，随后打开最后的宝藏，让你亲眼确认即将交到手中的东西。", fra: "Le marchand acquiesce, puis ouvre le cache final pour que vous puissiez voir exactement ce qui vous est remis.", deu: "Der Handler nickt, dann offnet er den letzten Vorrat, damit Sie genau sehen konnen, was Ihnen überreicht wird.", jpn: "商人は頷き、最後の宝箱を開けて、あなたの手に渡るものを確認させます。", kor: "상인이 고개를 끄덕이고, 마지막 보관함을 열어 당신의 손에 쥐어질 것을 보여줍니다.", por: "O comerciante acena, depois abre o alijo final para que voce possa ver exatamente o que esta sendo colocado em suas maos.", rus: "Торговец кивает, затем открывает последний тайник, чтобы вы могли видеть exactly то, что вкладывается в ваши руки.", spa: "El comerciante asiente, luego abre el alijo final para que puedas ver exactamente lo que se coloca en tus manos.")), new EventOption[1] { Act4RewardEventBase.CreateSimpleOption(this, FinishFinalDuplicateChoiceAsync, "ACT4_ROYAL_TREASURY_FINAL_TAKE", ModLoc.T("Take the royal cache", "领取皇家宝藏", fra: "Prendre le butin royal", deu: "Den koniglichen Vorrat nehmen", jpn: "王室の宝物を受け取る", kor: "왕실 보물 가져가기", por: "Pegar o alijo real", rus: "Взять королевский тайник", spa: "Tomar el alijo real"), ModLoc.T("Receive: +40% Max HP, Full Heal.", "获得：最大生命值 +40%，完全恢复生命。", fra: "Recu: +40% PV max, Soin complet.", deu: "Erhalten: +40% Max. LP, Volles Heilen.", jpn: "獲得：最大HP +40%、完全回復。", kor: "획득: 최대 HP +40%, 완전 회복.", por: "Receber: +40% HP max., Cura Completa.", rus: "Получено: +40% макс. ОЗ, полное лечение.", spa: "Recibir: +40% HP max., Curacion Completa.")) });
+		SetEventState(Act4RewardEventBase.PlainText(ModLoc.T("The trader nods, then opens the final cache so you can see exactly what is being pressed into your hands.", "商人点了点头，随后打开最后的宝藏，让你亲眼确认即将交到手中的东西。", fra: "Le marchand acquiesce, puis ouvre le cache final pour que vous puissiez voir exactement ce qui vous est remis.", deu: "Der Handler nickt, dann offnet er den letzten Vorrat, damit Sie genau sehen konnen, was Ihnen überreicht wird.", jpn: "商人は頷き、最後の宝箱を開けて、あなたの手に渡るものを確認させます。", kor: "상인이 고개를 끄덕이고, 마지막 보관함을 열어 당신의 손에 쥐어질 것을 보여줍니다.", por: "O comerciante acena, depois abre o alijo final para que voce possa ver exatamente o que esta sendo colocado em suas maos.", rus: "Торговец кивает, затем открывает последний тайник, чтобы вы могли видеть exactly то, что вкладывается в ваши руки.", spa: "El comerciante asiente, luego abre el alijo final para que puedas ver exactamente lo que se coloca en tus manos.")), new EventOption[1] { Act4RewardEventBase.CreateSimpleOption(this, FinishFinalDuplicateChoiceAsync, "ACT4_ROYAL_TREASURY_FINAL_TAKE", ModLoc.T("Take the royal cache", "领取皇家宝藏", fra: "Prendre le butin royal", deu: "Den koniglichen Vorrat nehmen", jpn: "王室の宝物を受け取る", kor: "왕실 보물 가져가기", por: "Pegar o alijo real", rus: "Взять королевский тайник", spa: "Tomar el alijo real"), ModLoc.T("Receive: +50% Max HP, Full Heal.", "获得：最大生命值 +50%，完全恢复生命。", fra: "Recu: +50% PV max, Soin complet.", deu: "Erhalten: +50% Max. LP, Volles Heilen.", jpn: "獲得：最大HP +50%、完全回復。", kor: "획득: 최대 HP +50%, 완전 회복.", por: "Receber: +50% HP max., Cura Completa.", rus: "Получено: +50% макс. ОЗ, полное лечение.", spa: "Recibir: +50% HP max., Curacion Completa.")) });
 	}
 
 	private async Task FinishFinalDuplicateChoiceAsync()
